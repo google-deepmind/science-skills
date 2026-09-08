@@ -58,6 +58,15 @@ GTF_URL = (
     'https://storage.googleapis.com/alphagenome/reference/gencode/'
     'hg38/gencode.v46.annotation.gtf.gz.feather'
 )
+
+
+def load_gtf(gtf_path: str | None = None) -> pd.DataFrame:
+  """Loads the GTF feather file from a path or URL."""
+  path = gtf_path or os.environ.get('ALPHAGENOME_GTF_PATH', GTF_URL)
+  print(f'Loading GTF from {path}...')
+  return pd.read_feather(path)
+
+
 API_ADDRESS = 'dns:///gdmscience.googleapis.com:443'
 
 
@@ -367,13 +376,20 @@ def main(argv: list[str] | None = None) -> None:
   parser.add_argument(
       '--zoom_genes', help='Comma-separated genes to zoom into.'
   )
+  parser.add_argument(
+      '--gtf_path',
+      type=str,
+      default=None,
+      help=(
+          'Path or URL to the GTF feather file (defaults to'
+          ' $ALPHAGENOME_GTF_PATH or the public GCS URL).'
+      ),
+  )
   args = parser.parse_args(argv)
 
   os.makedirs(args.output_dir, exist_ok=True)
   client = create_client()
-
-  print('Loading GTF...')
-  gtf = pd.read_feather(GTF_URL)
+  gtf = load_gtf(args.gtf_path)
 
   render_broad_view(
       client,

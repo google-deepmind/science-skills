@@ -63,6 +63,10 @@ installing them (including `pymol-open-source-whl`) when the script is executed.
 -   **Verify Structure Load**: After loading a structure with `cmd.load()`,
     always verify it succeeded by checking `cmd.count_atoms("all")`. If the
     result is 0, print an error to stdout and call `cmd.quit()` immediately.
+-   **Auto-detect Alpha-Carbon Trace**: For a **cartoon** representation your
+    PyMOL scripts should automatically detect if the structure is an
+    alpha-carbon trace (`cmd.count_atoms("name CA") == cmd.count_atoms("all")`),
+    then you MUST follow the **Alpha carbon trace cartoon** recipe.
 -   **Notification**: If this skill is used, ensure this is mentioned in the
     output.
 
@@ -114,6 +118,8 @@ ready recipes. Available recipes:
 
 -   **Cartoon with secondary structure coloring** — basic helix/sheet/loop
     coloring
+-   **Alpha carbon trace cartoon** — force cartoon representation for CA-only
+    structures
 -   **B-factor (pLDDT) coloring** — continuous spectrum coloring by B-factor
 -   **AlphaFold pLDDT coloring** — canonical threshold-based confidence colors
 -   **Highlight specific residues** — show active site or key residues as sticks

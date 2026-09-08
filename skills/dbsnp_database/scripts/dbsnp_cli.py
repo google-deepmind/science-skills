@@ -39,27 +39,43 @@ import urllib.parse
 import dotenv
 from polite_http import http_client
 
-_BASE_URL = "https://api.ncbi.nlm.nih.gov"
+_VARIATION_BASE_URL = "https://api.ncbi.nlm.nih.gov"
+_EUTILS_BASE_URL = "https://eutils.ncbi.nlm.nih.gov"
 
 _GRCH38 = "GCF_000001405.40"
 _GRCH37 = "GCF_000001405.25"
 _ASSEMBLIES = [_GRCH38, _GRCH37]
 
-_api_client = None
+_variation_client = None
+_eutils_client = None
 
 
-def get_api_client():
-  """Returns the lazily initialized HttpClient."""
-  global _api_client
-  if _api_client is None:
+def get_variation_client():
+  """Returns the lazily initialized HttpClient for Variation Services."""
+  global _variation_client
+  if _variation_client is None:
     api_key = os.environ.get("NCBI_API_KEY")
     rate_limit = 10 if api_key else 3
-    _api_client = http_client.HttpClient(
-        _BASE_URL + "/",
+    _variation_client = http_client.HttpClient(
+        _VARIATION_BASE_URL + "/",
         qps=rate_limit,
         retryable_status_codes=frozenset({429, 502, 503, 504}),
     )
-  return _api_client
+  return _variation_client
+
+
+def get_eutils_client():
+  """Returns the lazily initialized HttpClient for E-utilities."""
+  global _eutils_client
+  if _eutils_client is None:
+    api_key = os.environ.get("NCBI_API_KEY")
+    rate_limit = 10 if api_key else 3
+    _eutils_client = http_client.HttpClient(
+        _EUTILS_BASE_URL + "/",
+        qps=rate_limit,
+        retryable_status_codes=frozenset({429, 502, 503, 504}),
+    )
+  return _eutils_client
 
 
 class RateLimitError(Exception):
@@ -70,11 +86,17 @@ class ReferenceMismatchError(Exception):
   """Raised when the NCBI API reports a reference allele mismatch."""
 
 
-def _fetch_json(url, allow_not_found=False, allow_ref_mismatch=False):
+def _fetch_json(
+    url,
+    client_type="variation",
+    allow_not_found=False,
+    allow_ref_mismatch=False,
+):
   """Fetches JSON from URL using HttpClient.
 
   Args:
     url (str): The URL to fetch.
+    client_type (str): Either "variation" or "eutils".
     allow_not_found (bool): If True, returns None on HTTP 404.
     allow_ref_mismatch (bool): If True, raises ReferenceMismatchError on
       reference mismatch.
@@ -90,8 +112,13 @@ def _fetch_json(url, allow_not_found=False, allow_ref_mismatch=False):
     sep = "&" if "?" in url else "?"
     url = f"{url}{sep}api_key={urllib.parse.quote(api_key)}"
 
+  if client_type == "eutils" or url.startswith(_EUTILS_BASE_URL):
+    client = get_eutils_client()
+  else:
+    client = get_variation_client()
+
   try:
-    return get_api_client().fetch_json(url)
+    return client.fetch_json(url)
   except http_client.HttpError as exc:
     if exc.status_code == 429:
       raise RateLimitError(
@@ -244,8 +271,8 @@ def _abbreviate_refsnp(record, assembly):
 def cmd_get_variant(args):
   """Fetch the RefSNP record for a given rsID."""
   rsid = _normalise_rsid(args.rsid)
-  url = f"{_BASE_URL}/variation/v0/refsnp/{rsid}"
-  record = _fetch_json(url)
+  url = f"{_VARIATION_BASE_URL}/variation/v0/refsnp/{rsid}"
+  record = _fetch_json(url, client_type="variation")
 
   if args.full:
     _write_output(record, args.output)
@@ -284,8 +311,8 @@ def _spdi_list_to_rsids(spdi_list):
     if not spdi_val or spdi_val == ":::":
       continue
     encoded = urllib.parse.quote(spdi_val)
-    url = f"{_BASE_URL}/variation/v0/spdi/{encoded}/rsids"
-    resp = _fetch_json(url, allow_not_found=True)
+    url = f"{_VARIATION_BASE_URL}/variation/v0/spdi/{encoded}/rsids"
+    resp = _fetch_json(url, client_type="variation", allow_not_found=True)
     if resp is None:
       continue
     for rid in resp.get("data", {}).get("rsids", []):
@@ -307,12 +334,17 @@ def _resolve_variant_for_assembly(chrom, pos, ref, alts, assembly):
     list[str]: List of rsID strings.
   """
   url = (
-      f"{_BASE_URL}/variation/v0/"
+      f"{_VARIATION_BASE_URL}/variation/v0/"
       f"vcf/{chrom}/{pos}/{ref}/{alts}"
       f"/contextuals?assembly={assembly}"
   )
   try:
-    resp = _fetch_json(url, allow_not_found=True, allow_ref_mismatch=True)
+    resp = _fetch_json(
+        url,
+        client_type="variation",
+        allow_not_found=True,
+        allow_ref_mismatch=True,
+    )
   except ReferenceMismatchError:
     return []
   if resp is None:
@@ -366,8 +398,8 @@ def cmd_resolve_variant(args):
 def cmd_resolve_rsid(args):
   """Extract genomic coordinates from an rsID."""
   rsid = _normalise_rsid(args.rsid)
-  url = f"{_BASE_URL}/variation/v0/refsnp/{rsid}"
-  record = _fetch_json(url)
+  url = f"{_VARIATION_BASE_URL}/variation/v0/refsnp/{rsid}"
+  record = _fetch_json(url, client_type="variation")
 
   snapshot = record.get("primary_snapshot_data")
   if not snapshot:
@@ -402,11 +434,14 @@ def _resolve_hgvs_for_assembly(hgvs, assembly):
     list[str]: List of rsID strings.
   """
   encoded = urllib.parse.quote(hgvs)
-  url = (
-      f"{_BASE_URL}/variation/v0/hgvs/{encoded}/contextuals?assembly={assembly}"
-  )
+  url = f"{_VARIATION_BASE_URL}/variation/v0/hgvs/{encoded}/contextuals?assembly={assembly}"
   try:
-    resp = _fetch_json(url, allow_not_found=True, allow_ref_mismatch=True)
+    resp = _fetch_json(
+        url,
+        client_type="variation",
+        allow_not_found=True,
+        allow_ref_mismatch=True,
+    )
   except ReferenceMismatchError:
     return []
   if resp is None:
@@ -459,7 +494,15 @@ _REGION_RETMAX_CEILING = 5000
 
 def cmd_search_region(args):
   """Locate all rsIDs within a bounded chromosomal region."""
-  query = f"{args.chrom}[CHR] AND {args.start}:{args.end}[CPOS]"
+  # Normalize chromosome for E-utilities Entrez query:
+  # 1. Strips 'chr' prefix (e.g. 'chr7' -> '7', 'chrX' -> 'X')
+  # 2. Maps numeric sex chromosome representations (23 -> X, 24 -> Y)
+  chrom = str(args.chrom).strip().upper().removeprefix("CHR")
+  if chrom == "23":
+    chrom = "X"
+  elif chrom == "24":
+    chrom = "Y"
+  query = f"{chrom}[CHR] AND {args.start}:{args.end}[CPOS]"
   encoded_query = urllib.parse.quote(query)
   page_size = min(args.retmax, 500)  # per-page batch size
   collected = []
@@ -468,11 +511,11 @@ def cmd_search_region(args):
 
   while True:
     url = (
-        f"{_BASE_URL}/entrez/eutils/esearch.fcgi?db=snp&retmode=json"
+        f"{_EUTILS_BASE_URL}/entrez/eutils/esearch.fcgi?db=snp&retmode=json"
         f"&term={encoded_query}"
         f"&retmax={page_size}&retstart={retstart}"
     )
-    resp = _fetch_json(url)
+    resp = _fetch_json(url, client_type="eutils")
     result = resp.get("esearchresult", {})
 
     if total_available is None:

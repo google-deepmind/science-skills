@@ -52,10 +52,11 @@ GTF_URL = (
 )
 
 
-def load_gtf() -> pd.DataFrame:
-  """Loads the GTF feather file."""
-  print(f'Loading GTF from {GTF_URL}...')
-  return pd.read_feather(GTF_URL)
+def load_gtf(gtf_path: str | None = None) -> pd.DataFrame:
+  """Loads the GTF feather file from a path or URL."""
+  path = gtf_path or os.environ.get('ALPHAGENOME_GTF_PATH', GTF_URL)
+  print(f'Loading GTF from {path}...')
+  return pd.read_feather(path)
 
 
 def parse_gene_input(genes: list[str]) -> list[str]:
@@ -308,10 +309,19 @@ def main(argv: Sequence[str] | None = None) -> None:
   parser.add_argument(
       '--details', action='store_true', help='Show full transcript details.'
   )
+  parser.add_argument(
+      '--gtf_path',
+      type=str,
+      default=None,
+      help=(
+          'Path or URL to the GTF feather file (defaults to'
+          ' $ALPHAGENOME_GTF_PATH or the public GCS URL).'
+      ),
+  )
 
   args = parser.parse_args(argv)
 
-  gtf = load_gtf()
+  gtf = load_gtf(args.gtf_path)
 
   if args.coord is not None:
     run_coord_search(gtf, args.coord, args.window)

@@ -44,6 +44,7 @@ Examples:
 # ///
 
 import argparse
+import difflib
 import json
 import os
 import re
@@ -52,9 +53,11 @@ from typing import Any, Sequence
 
 import dotenv
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-RESOURCES_DIR = os.path.join(SCRIPT_DIR, "..", "resources")
-MAPPING_FILE = os.path.join(RESOURCES_DIR, "tissue_ontology_mapping.json")
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_RESOURCES_DIR = os.path.join(_SCRIPT_DIR, "..", "resources")
+_MAPPING_FILE = os.path.join(_RESOURCES_DIR, "tissue_ontology_mapping.json")
+_FUZZY_RATIO_THRESHOLD = 0.7
+_KEYWORD_PREFIX_LENGTH = 5
 
 
 def normalize_and_split(text: str) -> set[str]:
@@ -79,13 +82,29 @@ def search_ontology(
     full_text = f"{curie} {name} {str(data)}"
     record_words = normalize_and_split(full_text)
 
-    # Calculate intersection score
-    # Score is the number of query words found in the record
-    score = len(query_words & record_words)
-
-    # Give extra weight if the word is in the specific name
+    # Calculate match score with fuzzy matching
+    score = 0.0
     name_words = normalize_and_split(name)
-    score += len(query_words & name_words) * 2.0
+    for qw in query_words:
+      if qw in record_words:
+        score += 1.0
+        if qw in name_words:
+          score += 2.0
+      else:
+        # Match if fuzzy similarity exceeds threshold or shares common prefix
+        for rw in record_words:
+          matcher = difflib.SequenceMatcher(isjunk=None, a=qw, b=rw)
+          longest = matcher.find_longest_match(0, len(qw), 0, len(rw))
+          shares_prefix = (
+              longest.size >= _KEYWORD_PREFIX_LENGTH
+              and longest.a == 0
+              and longest.b == 0
+          )
+          if matcher.ratio() >= _FUZZY_RATIO_THRESHOLD or shares_prefix:
+            score += 0.5
+            if rw in name_words:
+              score += 1.0
+            break
 
     if score > 0:
       results.append({
@@ -113,11 +132,17 @@ def main(argv: Sequence[str] | None = None) -> None:
   parser.add_argument(
       "--limit", type=int, default=10, help="Max number of results to return."
   )
+  parser.add_argument(
+      "--mapping_path",
+      default=_MAPPING_FILE,
+      help="Path to tissue_ontology_mapping.json.",
+  )
   args = parser.parse_args(argv)
 
-  if not os.path.exists(MAPPING_FILE):
+  mapping_path = args.mapping_path
+  if not os.path.exists(mapping_path):
     print(
-        f"Error: Mapping file not found at {MAPPING_FILE}.",
+        f"Error: Mapping file not found at {mapping_path}.",
         file=sys.stderr,
     )
     print(
@@ -126,7 +151,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     )
     return
 
-  with open(MAPPING_FILE, "r") as f:
+  with open(mapping_path, "r") as f:
     mapping = json.load(f)
 
   results = search_ontology(args.query, mapping, args.limit)

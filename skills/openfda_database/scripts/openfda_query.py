@@ -30,6 +30,7 @@ other, animalandveterinary, cosmetic, and transparency.
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import os
 import sys
@@ -183,7 +184,13 @@ def _fetch(url: str) -> dict[str, Any]:
   """Fetches JSON data from the given URL and handles errors."""
 
   try:
-    return CLIENT.fetch_json(url)
+    resp = CLIENT.fetch(url, headers={"Accept": "application/json"})
+    body = resp.data
+    # Fallback: decompress if the body is gzip but the Content-Encoding
+    # header was missing or stripped (common with the openFDA API).
+    if body[:2] == b"\x1f\x8b":
+      body = gzip.decompress(body)
+    return json.loads(body.decode(resp.encoding))
   except http_client.HttpError as e:
     if e.status_code == 429:
       return {

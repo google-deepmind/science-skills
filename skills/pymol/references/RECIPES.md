@@ -329,6 +329,24 @@ cmd.png("output/superposition.png", width=1200, height=900, dpi=150)
 cmd.save("output/session.pse")
 ```
 
+### Alpha carbon trace cartoon
+
+If you have a structure with just an alpha carbon (CA) trace, PyMOL's default
+cartoon representation will look incorrect. You can force a cartoon trace. Note
+that this should only be used for CA-only structures.
+
+```python
+cmd.load("data/ca_trace.pdb", "protein")
+
+# Force cartoon trace for CA-only structures
+cmd.set("cartoon_trace", 1)
+
+cmd.show("cartoon", "protein")
+cmd.orient()
+cmd.png("output/ca_trace.png", width=1200, height=900, dpi=150)
+cmd.save("output/session.pse")
+```
+
 ### Load and modify an existing session
 
 ```python

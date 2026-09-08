@@ -51,12 +51,14 @@ Examples:
 from __future__ import annotations
 
 import argparse
+from collections.abc import Sequence
 import os
 from typing import Any
 
 from alphagenome.data import gene_annotation
 from alphagenome.data import genome
 from alphagenome.data import junction_data
+from alphagenome.data import track_data
 from alphagenome.data import transcript as transcript_utils
 from alphagenome.models import dna_client
 from alphagenome.visualization import plot_components
@@ -70,6 +72,15 @@ GTF_URL = (
     'https://storage.googleapis.com/alphagenome/reference/gencode/'
     'hg38/gencode.v46.annotation.gtf.gz.feather'
 )
+
+
+def load_gtf(gtf_path: str | None = None) -> pd.DataFrame:
+  """Loads the GTF feather file from a path or URL."""
+  path = gtf_path or os.environ.get('ALPHAGENOME_GTF_PATH', GTF_URL)
+  print(f'Loading GTF from {path}...')
+  return pd.read_feather(path)
+
+
 API_ADDRESS = 'dns:///gdmscience.googleapis.com:443'
 
 COLOR_REF = '#22AAE1'
@@ -77,12 +88,12 @@ COLOR_ALT = 'red'
 
 
 def colored_sashimi_plot(
-    junctions: Any,
-    ax: Any,
-    interval: Any = None,
+    junctions: Sequence[genome.Junction],
+    ax: plt.Axes,
+    interval: genome.Interval | None = None,
     filter_threshold: float = 0.01,
     annotate_counts: bool = True,
-    rng: Any = None,
+    rng: np.random.Generator | None = None,
     color: str | None = None,
 ) -> None:
   """Modified sashimi_plot that accepts a color argument.
@@ -97,11 +108,13 @@ def colored_sashimi_plot(
     color: Color of the sashimi plot.
   """
   rng = rng or np.random.default_rng()
-  total = np.sum([junction.k for junction in junctions])
+  total = sum(junction.k for junction in junctions)
+  if total == 0:
+    return
   # Random jitter position to avoid overlap.
   jitters = rng.uniform(low=0.05, high=0.15, size=len(junctions))
 
-  for junction, jt in zip(junctions, jitters):
+  for junction, jt in zip(junctions, jitters, strict=True):
     if junction.k < filter_threshold:
       continue
     k = junction.k / total
@@ -173,7 +186,9 @@ class ColoredSashimi(plot_components.Sashimi):
       return self._forced_strand, axis_index
     return super()._get_strand_and_metadata_index(axis_index)
 
-  def get_junctions(self, interval: Any) -> Any:
+  def get_junctions(
+      self, interval: genome.Interval
+  ) -> Sequence[genome.Junction]:
     """Returns the list of junctions that would be plotted in given interval."""
     # Mimic plot_ax logic to ensure consistency
     # We need a dummy axis index, usually 0 is fine if we have 1 track
@@ -189,7 +204,9 @@ class ColoredSashimi(plot_components.Sashimi):
     )
     return junctions
 
-  def plot_ax(self, ax: Any, axis_index: int, interval: Any) -> None:
+  def plot_ax(
+      self, ax: plt.Axes, axis_index: int, interval: genome.Interval
+  ) -> None:
     # We override plot_ax to call our colored_sashimi_plot
     strand, metadata_index = self._get_strand_and_metadata_index(axis_index)
     track_name = self._junction_track.metadata.iloc[metadata_index]['name']
@@ -240,7 +257,7 @@ class ColoredSashimi(plot_components.Sashimi):
         ax.set_ylabel(ylabel)
 
 
-def dynamic_label(track: Any, label_suffix: str = '') -> str:
+def dynamic_label(track: track_data.TrackData, label_suffix: str = '') -> str:
   """Constructs a label based on available metadata columns."""
   if track is None or track.metadata.empty:
     return f'Track {label_suffix}'
@@ -291,7 +308,9 @@ def dynamic_label(track: Any, label_suffix: str = '') -> str:
   return ' '.join(parts).strip()
 
 
-def filter_preference(track: Any) -> Any:
+def filter_preference(
+    track: track_data.TrackData | junction_data.JunctionData,
+) -> track_data.TrackData | junction_data.JunctionData:
   """Prefers 'total RNA-seq' over 'polyA plus RNA-seq' if both exist.
 
   Also aggressively dedups if 'Assay title' is not present but 'biosample_type'
@@ -333,7 +352,7 @@ def filter_preference(track: Any) -> Any:
 
 
 def get_deduplicated_indices(
-    track: Any, label_suffix: str = '', max_tracks: int = 5
+    track: track_data.TrackData, label_suffix: str = '', max_tracks: int = 5
 ) -> list[int]:
   """Returns indices of tracks with unique labels.
 
@@ -373,23 +392,23 @@ def get_deduplicated_indices(
 
 
 def deduplicate_tracks(
-    track: Any, label_suffix: str = '', max_tracks: int = 5
-) -> Any:
+    track: track_data.TrackData, label_suffix: str = '', max_tracks: int = 5
+) -> track_data.TrackData:
   """Deduplicates tracks based on their generated label."""
   keep_indices = get_deduplicated_indices(track, label_suffix, max_tracks)
   return track.filter_tracks(keep_indices)
 
 
 def filter_and_create_overlay(
-    ref_track: Any,
-    alt_track: Any,
+    ref_track: track_data.TrackData,
+    alt_track: track_data.TrackData,
     ontology_curie: str,
     strand: str | None = None,
     label_suffix: str = '',
     color_ref: str = COLOR_REF,
     color_alt: str = COLOR_ALT,
     target_tf: str | None = None,
-) -> list[Any] | None:
+) -> list[plot_components.OverlaidTracks] | None:
   """Filters tracks by ontology and strand and returns OverlaidTracks."""
   if ref_track is None or ref_track.metadata.empty:
     return []
@@ -485,9 +504,9 @@ def compute_splicing_zoom(
     variant_start: int,
     ref_allele: str,
     gene_gtf: pd.DataFrame,
-    ref_sashimi: Any,
-    alt_sashimi: Any,
-    clamp_interval: Any,
+    ref_sashimi: ColoredSashimi,
+    alt_sashimi: ColoredSashimi,
+    clamp_interval: genome.Interval,
 ) -> genome.Interval | None:
   """Computes a zoom interval that includes flanking exons and junctions.
 
@@ -639,7 +658,9 @@ def resolve_tracks_argument(tracks_arg: str | None) -> dict[str, Any]:
 
 def load_target_gene_info(
     gtf: pd.DataFrame, gene_name: str, interval_1mb: genome.Interval
-) -> tuple[genome.Interval, str | None, list[Any], pd.DataFrame]:
+) -> tuple[
+    genome.Interval, str | None, list[transcript_utils.Transcript], pd.DataFrame
+]:
   """Loads gene info from GTF and returns interval, strand, transcripts, and filtered GTF."""
   gene_gtf = gtf[gtf['gene_name'] == gene_name]
   if gene_gtf.empty:
@@ -676,12 +697,12 @@ def load_target_gene_info(
 
 
 def get_rna_seq_components(
-    prediction: Any,
+    prediction: dna_client.VariantOutput,
     requested_outputs: list[dna_client.OutputType],
     ontology: str,
     strand: str | None,
     pretty_id: str,
-) -> list[Any]:
+) -> list[plot_components.OverlaidTracks]:
   """Returns RNA-seq overlay components."""
   if dna_client.OutputType.RNA_SEQ not in requested_outputs:
     return []
@@ -696,16 +717,16 @@ def get_rna_seq_components(
 
 
 def add_splicing_components(
-    prediction: Any,
+    prediction: dna_client.VariantOutput,
     requested_outputs: list[dna_client.OutputType],
     show_splicing: bool,
     variant: genome.Variant,
-    variant_args: Any,
+    variant_args: argparse.Namespace,
     gene_gtf: pd.DataFrame,
     interval_1mb: genome.Interval,
     strand: str | None,
     pretty_id: str,
-    components: list[Any],
+    components: list[plot_components.AbstractComponent],
     zoom_interval: genome.Interval,
 ) -> genome.Interval:
   """Adds splicing components and updates zoom interval."""
@@ -804,7 +825,9 @@ def add_splicing_components(
     ref_sites = filter_preference(prediction.reference.splice_sites)
     alt_sites = filter_preference(prediction.alternate.splice_sites)
 
-    def split_sites(track: Any, pattern: str) -> Any:
+    def split_sites(
+        track: track_data.TrackData | None, pattern: str
+    ) -> track_data.TrackData | None:
       if track is None or track.metadata.empty:
         return None
       mask = np.zeros(len(track.metadata), dtype=bool)
@@ -855,17 +878,17 @@ def add_splicing_components(
 
 
 def get_regulatory_components(
-    prediction: Any,
+    prediction: dna_client.VariantOutput,
     requested_outputs: list[dna_client.OutputType],
     show_regulatory: bool,
-    variant_args: Any,
+    variant_args: argparse.Namespace,
     pretty_id: str,
-) -> list[Any]:
+) -> list[plot_components.OverlaidTracks]:
   """Returns regulatory overlay components (DNase, ChIP-TF)."""
   if not show_regulatory:
     return []
 
-  components = []
+  components: list[plot_components.OverlaidTracks] = []
   if dna_client.OutputType.DNASE in requested_outputs:
     dnase_comp = filter_and_create_overlay(
         prediction.reference.dnase,
@@ -893,9 +916,9 @@ def get_regulatory_components(
 
 
 def render_plots(
-    variant_args: Any,
-    prediction: Any,
-    components: list[Any],
+    variant_args: argparse.Namespace,
+    prediction: dna_client.VariantOutput,
+    components: list[plot_components.AbstractComponent],
     zoom_interval: genome.Interval,
     variant: genome.Variant,
     requested_outputs: list[dna_client.OutputType],
@@ -1008,7 +1031,7 @@ def render_plots(
       print(f'Failed to plot whole-gene view: {e}')
 
 
-def visualize_variant_effects(variant_args: Any) -> None:
+def visualize_variant_effects(variant_args: argparse.Namespace) -> None:
   """Main function to visualize variant effects."""
   # Setup Output
   os.makedirs(variant_args.output_dir, exist_ok=True)
@@ -1048,9 +1071,8 @@ def visualize_variant_effects(variant_args: Any) -> None:
   )
   print(f'Requested Outputs: {[o.name for o in requested_outputs]}')
 
-  # Load GTF for Gene Info
-  print('Loading GTF...')
-  gtf = pd.read_feather(GTF_URL)
+  # Load GTF for gene info.
+  gtf = load_gtf(getattr(variant_args, 'gtf_path', None))
 
   gene_interval, strand, transcripts, gene_gtf = load_target_gene_info(
       gtf, variant_args.gene, interval_1mb
@@ -1065,7 +1087,7 @@ def visualize_variant_effects(variant_args: Any) -> None:
   )
 
   # --- Plotting ---
-  components = []
+  components: list[plot_components.AbstractComponent] = []
 
   # 1. Transcripts (Verified: User wants these AT THE TOP)
   if transcripts:
@@ -1188,6 +1210,15 @@ def main(argv: list[str] | None = None) -> None:
       '--description',
       default=None,
       help='Natural language summary of the variant effect.',
+  )
+  parser.add_argument(
+      '--gtf_path',
+      type=str,
+      default=None,
+      help=(
+          'Path or URL to the GTF feather file (defaults to'
+          ' $ALPHAGENOME_GTF_PATH or the public GCS URL).'
+      ),
   )
   args = parser.parse_args(argv)
 

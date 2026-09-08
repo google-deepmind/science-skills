@@ -25,9 +25,17 @@ description: >
 3.  **`.env` file**: Make sure the `.env` file exists in your home directory.
     Create one if it does not exist.
 4.  **`ALPHAGENOME_API_KEY`**: This skill requires an API key to function.
+
     You can register for a key at https://deepmind.google.com/science/alphagenome/.
     You **MUST** use the safe credentials protocol in the `credentials` skill to
     check for and request this key if this skill looks relevant to the user's request.
+5.  **`ALPHAGENOME_GTF_PATH` (Optional)**: Accelerate gene/transcript lookup by
+    pointing to a local copy of the GTF feather file instead of downloading from
+    GCS:
+
+    ```bash
+    echo "ALPHAGENOME_GTF_PATH=/path/to/local/gencode.v46.annotation.gtf.gz.feather" >> ~/.env
+    ```
 
 ## Core Rules
 
