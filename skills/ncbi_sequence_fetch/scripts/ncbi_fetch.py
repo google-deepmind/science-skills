@@ -32,6 +32,7 @@ Rate-limited to 3 requests/second (10/s with NCBI_API_KEY).
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import os
 import re
@@ -150,9 +151,17 @@ def _eutils_get(endpoint: str, params: dict[str, str | int]) -> str | None:
     full_url += f'?{query_string}'
 
   try:
-    return get_api_client().fetch_text(full_url)
+    res = get_api_client().fetch(full_url)
+    data = res.data
+    if data.startswith(b'\x1f\x8b'):
+      try:
+        data = gzip.decompress(data)
+      except gzip.BadGzipFile:
+        pass
+    encoding = getattr(res, 'encoding', None) or 'utf-8'
+    return data.decode(encoding, errors='replace')
   except http_client.HttpError as e:
-    print(f'{endpoint} error after all retires: {e}', file=sys.stderr)
+    print(f'{endpoint} error after all retries: {e}', file=sys.stderr)
     return None
 
 

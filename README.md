@@ -1,6 +1,4 @@
-# Science Skills
-
-[![Install via skills.sh](https://img.shields.io/badge/skills.sh-install-green)](https://skills.sh/google-deepmind/science-skills)
+# Science skills
 
 A collection of agent skills for scientific research tasks, spanning genomics,
 structural biology, cheminformatics, literature search, and more.
@@ -8,7 +6,7 @@ structural biology, cheminformatics, literature search, and more.
 Each skill provides structured instructions, scripts, and resources that extend
 an AI agent's capabilities for specialized scientific tasks.
 
-## Skill Structure
+## Skill structure
 
 Each skill directory contains:
 
@@ -17,33 +15,37 @@ Each skill directory contains:
 -   **scripts/** — Helper scripts and utilities
 -   **references/** — Additional documentation and references (optional)
 
-## Getting started with GDM Science Skills
+## Using Science skills with [Google Antigravity](https://antigravity.google/)
 
-Install the Science Skills bundle via
+Science skills are best used in Google Antigravity, with the Science plugin
+enabled.
+
+-   Download and install the latest version of Google Antigravity from
+    [antigravity.google](https://antigravity.google/).
+-   Enable the Science plugin: In the Antigravity app, go to `Customizations` >
+    `Build with Google` > `Science` > `Add`.
+
+<details>
+
+<summary><b>Video: how to install</b></summary>
+
+https://github.com/user-attachments/assets/b20751f8-e9b0-442a-804f-2d587eb0426e
+
+</details>
+
+## Using Science skills via `npx`
+
+Install the Science skills bundle via
 [npx](https://docs.npmjs.com/cli/commands/npx) using:
 
 ```bash
 npx skills add google-deepmind/science-skills/
 ```
 
-## Using science skills with [Google Antigravity](https://antigravity.google/)
-
-If you're a new Google Antigravity user:
-
--   Launch the application after downloading Google Antigravity and check the
-    box for Science at the 'Build with Google' step - this will install the
-    curated collection of our Science Skills.
-
-If you're an existing Google Antigravity user:
-
--   Update to the latest version then open Settings -> Customizations -> Build
-    with Google Plugins (click on 'Customize' at the bottom of the page) ->
-    Download the `Science` plugin
-
 ### Prerequisites
 
 We use the `uv` package manager to handle dependencies. The first time you
-trigger a Science Skill, the agent will ask for approval and install `uv`, and
+trigger a Science skill, the agent will ask for approval to install `uv`, and
 then proceed to respond to your scientific query / task. We recommend restarting
 Antigravity after this first time installation.
 
@@ -54,9 +56,9 @@ API key and guide you through writing in the correct location. However, if you
 would rather do this yourself, you can run a command like this in your terminal:
 `echo "ALPHAGENOME_API_KEY=your_actual_api_key" >> ~/.env`
 
-### Customizing or Creating Skills
+### Customizing or creating skills
 
-If you want to customize an existing Science Skill or create a new skill of your
+If you want to customize an existing Science skill or create a new skill of your
 own, you should **not** modify the files inside the Antigravity Science plugin
 installation directory, as your changes will be overwritten whenever the plugin
 is updated. Instead, place your custom or modified skills elsewhere, e.g. in
@@ -68,12 +70,8 @@ your personal skills directory:
 
 ## Links
 
-You can find examples of Science Skills use cases, including a demo, at
+You can find examples and demos of Antigravity's use cases in science at
 [antigravity.google/use-cases/science](https://antigravity.google/use-cases/science).
-
-We have also published a
-[technical report](https://storage.googleapis.com/deepmind-media/papers/google_deepmind_science_skills_for_antigravity_towards_efficient_and_reliable_scientific_workflows.pdf)
-on the Science Skills.
 
 ## Licensing & Disclaimer
 

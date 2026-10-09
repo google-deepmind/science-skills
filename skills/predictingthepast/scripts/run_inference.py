@@ -37,7 +37,9 @@ import functools
 import json
 import os
 import pickle
+import ssl
 import sys
+import tempfile
 from typing import Any
 import urllib.error
 import urllib.request
@@ -59,6 +61,16 @@ _GREEK_FILES: dict[str, str] = {
     'dataset': 'iphi.json',
     'retrieval': 'iphi_emb_xid153143996.pkl',
 }
+
+_VALID_MODEL_FILENAMES: frozenset[str] = frozenset(
+    _LATIN_FILES.values()
+) | frozenset(_GREEK_FILES.values())
+
+# Download configuration:
+# Chunks are kept well below 32 MiB proxy limits (e.g. Harpoon/Trawler).
+_DOWNLOAD_CHUNK_SIZE: int = 16 * 1024 * 1024  # 16 MiB
+_DOWNLOAD_TIMEOUT_SECONDS: int = 120  # ~136 kB/s floor before timeout
+_DOWNLOAD_PROBE_TIMEOUT_SECONDS: int = 60
 
 # Region-name lookup files mapping numeric location IDs to human-readable names.
 # These files are bundled in the skill's references/ directory.
@@ -310,30 +322,113 @@ def average_attributions(
 
 
 def _download_model_file(url: str, dest_path: str):
-  """Downloads a model file from a URL to a local path."""
+  """Downloads a model file from a URL to a local path using 16 MiB Range chunks."""
   print(f'[*] Downloading {url} to {dest_path}...', file=sys.stderr)
 
+  cafile = os.environ.get('SSL_CERT_FILE') or os.environ.get(
+      'REQUESTS_CA_BUNDLE'
+  )
+  ssl_ctx = ssl.create_default_context(cafile=cafile) if cafile else None
+
+  dest_dir = os.path.dirname(dest_path)
+  # Make sure the folder exists before trying to save the file
+  os.makedirs(dest_dir, exist_ok=True)
+
+  tmp_path = None
   try:
-    # Open the connection to the URL
-    with urllib.request.urlopen(url, timeout=30) as resp:
+    # Open the connection to the URL to probe total file size
+    probe_req = urllib.request.Request(url, headers={'Range': 'bytes=0-0'})
+    with urllib.request.urlopen(
+        probe_req, timeout=_DOWNLOAD_PROBE_TIMEOUT_SECONDS, context=ssl_ctx
+    ) as resp:
+      content_range = resp.headers.get('Content-Range', '')
+      if '/' in content_range:
+        total_size = int(content_range.split('/')[-1])
+      else:
+        total_size = int(resp.headers.get('Content-Length', 0))
 
-      # Make sure the folder exists before trying to save the file
-      os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+    # Use a named temporary file in the destination directory to ensure
+    # atomic replacement on the same filesystem.
+    with tempfile.NamedTemporaryFile(
+        dir=dest_dir,
+        prefix=f'{os.path.basename(dest_path)}.',
+        suffix='.tmp',
+        delete=False,
+    ) as tmp_file:
+      tmp_path = tmp_file.name
 
-      # Open the local file and save the downloaded data in chunks
-      with open(dest_path, 'wb') as f:
-        while True:
-          chunk = resp.read(8192)
-          if not chunk:  # Stop when there is no more data
-            break
-          f.write(chunk)
+    # Open the local file and save the downloaded data in chunks
+    start = 0
+    if total_size > 0:
+      with open(tmp_path, 'wb') as f:
+        while start < total_size:
+          end = min(start + _DOWNLOAD_CHUNK_SIZE - 1, total_size - 1)
+          req = urllib.request.Request(
+              url, headers={'Range': f'bytes={start}-{end}'}
+          )
+          with urllib.request.urlopen(
+              req, timeout=_DOWNLOAD_TIMEOUT_SECONDS, context=ssl_ctx
+          ) as resp:
+            data = resp.read()
+            if not data:  # Stop when there is no more data
+              break
+            f.write(data)
+            start += len(data)
+    else:
+      with urllib.request.urlopen(
+          url, timeout=_DOWNLOAD_TIMEOUT_SECONDS, context=ssl_ctx
+      ) as resp:
+        with open(tmp_path, 'wb') as f:
+          while True:
+            chunk = resp.read(8192)
+            if not chunk:  # Stop when there is no more data
+              break
+            f.write(chunk)
+            start += len(chunk)
 
-    print(f'[*] Successfully downloaded to {dest_path}', file=sys.stderr)
+    if total_size and start != total_size:
+      raise OSError(
+          f'Incomplete download for {url}: received {start} bytes, expected'
+          f' {total_size} bytes'
+      )
 
-  except urllib.error.URLError as e:
-    # This catches bad links, missing files, and connection timeouts
-    print(f'Error downloading model file: {e}', file=sys.stderr)
-    sys.exit(1)
+    os.replace(tmp_path, dest_path)
+    tmp_path = None
+    print(
+        f'[*] Successfully downloaded to {dest_path} ({start} bytes)',
+        file=sys.stderr,
+    )
+
+  except Exception as e:
+    # Clean up the temporary file on error.
+    if tmp_path and os.path.exists(tmp_path):
+      os.remove(tmp_path)
+    raise RuntimeError(
+        f'Failed to download model file from {url} to {dest_path}: {e}'
+    ) from e
+
+
+def _load_or_redownload(path: str, url: str, loader_fn: Any) -> Any:
+  """Loads a file with loader_fn, re-downloading if truncated or corrupted."""
+  try:
+    return loader_fn(path)
+  except (pickle.UnpicklingError, EOFError, json.JSONDecodeError) as e:
+    filename = os.path.basename(path)
+    if filename not in _VALID_MODEL_FILENAMES:
+      raise RuntimeError(
+          f'Refusing to delete unrecognized file {path}: not in'
+          f' _VALID_MODEL_FILENAMES ({_VALID_MODEL_FILENAMES})'
+      ) from e
+
+    print(
+        f'WARNING: Corrupted or truncated file at {path} ({e});'
+        ' re-downloading...',
+        file=sys.stderr,
+    )
+    if os.path.exists(path):
+      os.remove(path)
+    _download_model_file(url, path)
+    return loader_fn(path)
 
 
 def _load_resources(
@@ -359,16 +454,26 @@ def _load_resources(
 
   checkpoint_path = os.path.join(args.models_dir, files['checkpoint'])
   print(f'Loading checkpoint from {checkpoint_path}...', file=sys.stderr)
-  model_config, region_map, alphabet, params, forward = _load_checkpoint(
-      checkpoint_path, args.language
+  model_config, region_map, alphabet, params, forward = _load_or_redownload(
+      checkpoint_path,
+      f"{GCS_BASE}/{files['checkpoint']}",
+      lambda p: _load_checkpoint(p, args.language),
   )
 
   dataset_path = os.path.join(args.models_dir, files['dataset'])
   retrieval_path = os.path.join(args.models_dir, files['retrieval'])
   print(f'Loading dataset from {dataset_path}...', file=sys.stderr)
-  dataset = inference.load_dataset(dataset_path)
+  dataset = _load_or_redownload(
+      dataset_path,
+      f"{GCS_BASE}/{files['dataset']}",
+      inference.load_dataset,
+  )
   print(f'Loading retrieval from {retrieval_path}...', file=sys.stderr)
-  retrieval = inference.load_retrieval(retrieval_path)
+  retrieval = _load_or_redownload(
+      retrieval_path,
+      f"{GCS_BASE}/{files['retrieval']}",
+      inference.load_retrieval,
+  )
 
   return model_config, region_map, alphabet, params, forward, dataset, retrieval
 
