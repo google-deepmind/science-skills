@@ -1,7 +1,7 @@
 ---
 name: literature-search-biorxiv
 description: >
-  Browse, filter, and download life sciences, biology, and medical preprints
+  Browse and filter life sciences, biology, and medical preprints
   from bioRxiv and medRxiv. Supports fetching paper metadata by DOI,
   and browsing by date range with category and keyword filters. Keyword
   filtering is local, so date ranges MUST be narrow (1-4 weeks) with a

@@ -49,8 +49,8 @@ trigger a Science skill, the agent will ask for approval to install `uv`, and
 then proceed to respond to your scientific query / task. We recommend restarting
 Antigravity after this first time installation.
 
-Some skills, such as AlphaGenome and OpenAlex, require an API key to function.
-Others, such as ClinVar, benefit from an API key to unlock higher rate limits
+Some skills, such as AlphaGenome, require an API key to function. Others, such
+as ClinVar and OpenAlex, benefit from an API key to unlock higher rate limits
 but are still functional without one. The agent should prompt you to obtain the
 API key and guide you through writing in the correct location. However, if you
 would rather do this yourself, you can run a command like this in your terminal:

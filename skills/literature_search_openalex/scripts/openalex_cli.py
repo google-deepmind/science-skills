@@ -32,6 +32,7 @@ import argparse
 import json
 import logging
 import os
+import random
 import re
 import sys
 from typing import Any, Sequence
@@ -64,6 +65,11 @@ DEFAULT_TIMEOUT_SECS = 30
 PDF_TIMEOUT_SECS = 60
 MAX_RETRIES = 5
 TRUNCATE_LINE_LIMIT = 500
+
+# OpenAlex answers both rate limits and requests for plan-gated features (e.g.
+# the `from_created_date` filter) with HTTP 429. Only the latter carry this
+# error in the response body, and retrying them can never succeed.
+PLAN_UPGRADE_ERROR = "Plan upgrade required"
 
 ENTITY_TYPES = [
     "works",
@@ -109,6 +115,71 @@ def _build_url_with_api_key(url: str, api_key: str | None) -> str:
   return f"{url}{separator}{urllib.parse.urlencode({'api_key': api_key})}"
 
 
+def _is_plan_upgrade_error(error: http_client.HttpError) -> bool:
+  """Returns True if OpenAlex rejected the request as needing a paid plan."""
+  # Checks str(error) rather than error.body: polite_http appends a summary of
+  # the response body to the message and un-gzips it first, whereas error.body
+  # holds the raw, possibly gzip-compressed, bytes.
+  return (
+      error.status_code == 429
+      and PLAN_UPGRADE_ERROR.lower() in str(error).lower()
+  )
+
+
+def _retry_delay_secs(attempt: int) -> float:
+  """Returns the back-off before retry *attempt* (0-based), like polite_http."""
+  delay = min(
+      http_client.DEFAULT_BACKOFF_BASE_SECS * 2**attempt,
+      http_client.DEFAULT_BACKOFF_MAX_SECS,
+  )
+  return delay + random.uniform(0, http_client.DEFAULT_JITTER_SECS)
+
+
+def _fetch_api(full_url: str, max_retries: int) -> http_client.HttpResponse:
+  """Fetches from the OpenAlex API, making at most `max_retries + 1` requests.
+
+  Retries 429s, 5xx and network errors with exponential back-off, except 429s
+  that say "Plan upgrade required", which fail on the first attempt. The
+  retrying happens here, with polite_http limited to a single request per
+  call, because polite_http would retry 429s without looking at the body.
+
+  Args:
+      full_url: The URL to fetch, including any API key.
+      max_retries: Maximum number of retries after the first attempt.
+
+  Returns:
+      The successful response.
+
+  Raises:
+      http_client.HttpError: On a plan-gated 429, any other non-retriable
+        error, or once all retries are exhausted.
+  """
+  attempt = 0
+  while True:
+    try:
+      return _API_CLIENT.fetch(full_url, max_retries=0)
+    except http_client.HttpError as e:
+      retriable = (
+          e.status_code is None  # Network error.
+          or e.status_code in _API_CLIENT.retryable_status_codes
+      )
+      if not retriable or _is_plan_upgrade_error(e) or attempt >= max_retries:
+        raise
+      reason = f"HTTP {e.status_code}" if e.status_code else "network error"
+      delay = _retry_delay_secs(attempt)
+      logging.info(
+          "OpenAlex request failed (%s); retrying in %.1fs (attempt %d/%d)",
+          reason,
+          delay,
+          attempt + 1,
+          max_retries + 1,
+      )
+      # Like polite_http's own back-off, this also pauses other processes
+      # that share the client's cross-process rate limiter.
+      _API_CLIENT.wait(min_sleep=delay)
+      attempt += 1
+
+
 def fetch_with_retry(
     url: str,
     params: dict[str, Any],
@@ -118,6 +189,9 @@ def fetch_with_retry(
     return_headers: bool = False,
 ) -> dict[str, Any] | None:
   """Fetches data from the OpenAlex API with exponential backoff.
+
+  Retries transient errors, except 429s that say a paid plan is required:
+  those fail immediately, since retrying them can never succeed.
 
   Args:
       url: The base URL to fetch.
@@ -142,7 +216,7 @@ def fetch_with_retry(
     if url.startswith(PDF_BASE_URL):
       resp = _PDF_CLIENT.fetch(full_url, max_retries=max_retries)
     elif url.startswith(BASE_URL):
-      resp = _API_CLIENT.fetch(full_url, max_retries=max_retries)
+      resp = _fetch_api(full_url, max_retries)
     else:
       raise ValueError(f"Unsupported URL base: {url}")
     data = resp.json()
@@ -150,7 +224,15 @@ def fetch_with_retry(
       data["_response_headers"] = resp.headers
     return data
   except http_client.HttpError as e:
-    if e.status_code == 429 and not api_key:
+    if _is_plan_upgrade_error(e):
+      logging.error(
+          "OpenAlex says this request needs a paid plan (HTTP 429 '%s'), e.g."
+          " because it uses a plan-gated filter such as from_created_date."
+          " Retrying or adding a free API key will not help; drop that part"
+          " of the query or see https://openalex.org/pricing.",
+          PLAN_UPGRADE_ERROR,
+      )
+    elif e.status_code == 429 and not api_key:
       logging.warning(
           "Rate limit hit (429 Too Many Requests). You are currently running "
           "without an API key, which limits API usage. Please provide an API "
@@ -382,8 +464,8 @@ def _try_fallback_locations(
 def handle_download_pdf(args: argparse.Namespace) -> None:
   """Fetches and saves the open-access PDF for a specific work.
 
-  Tries the OpenAlex premium content server first (requires API key), then
-  falls back to PDF URLs listed in the work's metadata.
+  Tries the OpenAlex content server first (requires an API key), then falls
+  back to PDF URLs listed in the work's metadata.
 
   Args:
       args: Parsed command-line arguments containing `id` (the OpenAlex work
@@ -411,7 +493,7 @@ def handle_download_pdf(args: argparse.Namespace) -> None:
   except http_client.HttpError as e:
     if e.status_code == 401:
       logging.warning(
-          "Premium content server requires an API key (HTTP 401)."
+          "The OpenAlex content server requires an API key (HTTP 401)."
           " Trying fallback locations from work metadata..."
       )
     elif e.status_code == 404:
@@ -426,8 +508,9 @@ def handle_download_pdf(args: argparse.Namespace) -> None:
     return
 
   logging.error(
-      "Could not download PDF for %s. If the work requires premium access,"
-      " provide an API key via --api-key or OPENALEX_API_KEY.",
+      "Could not download PDF for %s. The OpenAlex content server requires an"
+      " API key; if none is set, provide one via --api-key or"
+      " OPENALEX_API_KEY.",
       args.id,
   )
   sys.exit(1)
@@ -500,19 +583,31 @@ def handle_rate_limit(args: argparse.Namespace) -> None:
   limit_val = headers.get("x-ratelimit-limit")
   remaining_val = headers.get("x-ratelimit-remaining")
   reset_val = headers.get("x-ratelimit-reset")
+  limit_usd_val = headers.get("x-ratelimit-limit-usd")
+  remaining_usd_val = headers.get("x-ratelimit-remaining-usd")
 
-  limits = {
+  limits: dict[str, Any] = {
+      "authenticated": bool(args.api_key),
       "x-ratelimit-limit": limit_val,
       "x-ratelimit-remaining": remaining_val,
       "x-ratelimit-reset": reset_val,
   }
+  if limit_usd_val is not None:
+    limits["x-ratelimit-limit-usd"] = limit_usd_val
+  if remaining_usd_val is not None:
+    limits["x-ratelimit-remaining-usd"] = remaining_usd_val
+  notice = data.get("meta", {}).get("notice")
+  if notice:
+    limits["notice"] = notice
 
-  if limit_val is None and remaining_val is None:
+  if not args.api_key:
     logging.warning(
-        "Rate limit headers were not returned by the API. This can happen"
-        " when using an unauthenticated (polite pool) request. Provide an"
-        " API key via --api-key or OPENALEX_API_KEY for detailed limits."
+        "No API key set; limits reflect the shared keyless per-IP budget."
+        " Provide an API key via --api-key or OPENALEX_API_KEY for a dedicated"
+        " daily budget and higher rate limits."
     )
+  elif limit_val is None and remaining_val is None:
+    logging.warning("Rate limit headers were not returned by the API.")
 
   # Output the captured limits to the user.
   print_json({"rate_limits": limits})
@@ -533,11 +628,11 @@ def main(argv: Sequence[str]) -> None:
       type=str,
       default=os.environ.get("OPENALEX_API_KEY"),
       help=(
-          "Optional API key for higher rate limits. Without it, usage is "
-          "strictly limited. If you hit rate limits frequently, please provide "
-          "an API key. Defaults to the OPENALEX_API_KEY environment variable "
-          "if set. An explicit --api-key flag overrides the environment "
-          "variable."
+          "Optional API key for higher rate limits. Without it, requests "
+          "share a small daily budget per IP address. If you hit rate limits "
+          "frequently, please provide an API key. Defaults to the "
+          "OPENALEX_API_KEY environment variable if set. An explicit "
+          "--api-key flag overrides the environment variable."
       ),
   )
 

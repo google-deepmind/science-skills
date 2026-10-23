@@ -1,11 +1,15 @@
 ---
 name: alphagenome-atlas-website-links
 description: >-
-  Constructs deep-links and URLs for the AlphaGenome Atlas website. Supports generating single-variant exploration
-  links (1-based chr:pos:ref>alt), genomic locus views (1-based closed chr:start-end), candidate summary tables,
-  and AlphaGenome reference vs. alternate predictions. Use whenever visualizing, exploring, charting, or linking
-  genetic variants and genomic loci on the AlphaGenome Atlas, or when asked to inspect, view, or link predictions for a
-  genomic variant.
+  Constructs deep-links and URLs for the AlphaGenome Atlas website. Supports
+  generating single-variant exploration links (1-based VCF-style coordinates),
+  genomic locus views (1-based closed chr:start-end), candidate summary tables,
+  and AlphaGenome reference vs. alternate predictions. Use when visualizing,
+  exploring, charting, or linking genetic variants and genomic loci on the
+  AlphaGenome Atlas, or when asked to inspect, view, or link predictions for a
+  genomic variant. Don't use for computing raw AlphaGenome variant predictions
+  directly without Atlas URLs (use alphagenome-single-variant-analysis or
+  alphagenome-variant-impact-score).
 ---
 
 # AlphaGenome Atlas Deep-Linking & URL Configuration
@@ -138,32 +142,46 @@ f=BIOSAMPLE_NAME:<CellLine>,SCORER_MODALITY:RNA-seq,SCORER_MODALITY:DNase,ASSAY_
 > (`avi,section:RNA_SEQ,section:DNASE,section:CHIP_TF`) without pinned tracks
 > are preferred.
 
-Motif instances and CWM logos render **exclusively on pinned tracks** at
-base-pair resolution. General section heatmaps do not trigger motif footprint
-rendering.
+Motif instances and CWM logos render **exclusively on pinned sequence tracks**
+(`ACTIVE_ISM` or `RAW_SCORES`, not `REF_SCORES`) at base-pair resolution.
+General section heatmaps do not trigger motif footprint rendering.
 
 ### Pinned Track Key Schema
 
 ```
-pinned:<TrackMetadataName>:<StrandNumber>:<ScorerShortName>:heatmap:HEATMAP_TILESET_SOURCE_ACTIVE_ISM_SCORES:<TilesetId>
+pinned:<TrackMetadataName>:<StrandNumber>:<ScorerShortName>:<Source>
 ```
 
-*   `<TrackMetadataName>`: Exact track name from production metadata proto,
-    URL-encoded (`%20` for spaces).
+Example `lItems` entry in a raw URL query string:
+
+```
+pinned:EFO:0002067%20TF%20ChIP-seq%20GATA1:3:CHIP_TF:ACTIVE_ISM
+```
+
+*   `<TrackMetadataName>`: Exact track name from metadata proto (e.g.
+    `EFO:0002067 TF ChIP-seq GATA1`), percent-encoded (`%20` for spaces) in raw
+    URL query strings (or unencoded when passed through
+    `urllib.parse.urlencode`).
 *   `<StrandNumber>`: `1` (`STRAND_POSITIVE`), `2` (`STRAND_NEGATIVE`), `3`
     (`STRAND_UNSTRANDED`).
 *   `<ScorerShortName>`: `RNA_SEQ`, `CHIP_TF`, `DNASE`, `ATAC`, `CAGE`,
-    `PROCAP`, `CHIP_HISTONE`.
-*   `HEATMAP_TILESET_SOURCE_ACTIVE_ISM_SCORES`: Required source identifier for
-    Active-ISM motif layers.
-*   `<TilesetId>`: Server-assigned tileset identifier (`17354278441953531756`
-    for current production).
+    `PROCAP`, `CHIP_HISTONE` (or `RAW_SCORES`-only modalities: `SPLICE_SITES`,
+    `SPLICE_SITE_USAGE`, `SPLICE_JUNCTIONS`, `POLYADENYLATION`, `CONTACT_MAPS`).
+*   `<Source>`: Heatmap tileset source identifier: `ACTIVE_ISM`
+    (activity-weighted `_TIMES_ACTIVE` motif footprints and CWM sequence logos),
+    `RAW_SCORES` (raw ISM variant-score tracks, also rendering raw ISM motif
+    footprints and CWM sequence logos across all modalities), or `REF_SCORES`
+    (continuous reference signal line charts without sequence letters or
+    motifs). Calibrated and AVI tracks cannot be pinned, and legacy
+    `:heatmap:...:<TilesetId>` suffixes fail track lookup and are ignored.
 
 ### Recipe for Automatic Motif Display on Load
 
-1.  Append `pinned:<PinnedKey>` entries to `lItems` for the specific target
-    tracks only.
-2.  Set viewport interval `i` to base-pair resolution ($\le 1\text{ bp/px}$,
+1.  Append entries of the form
+    `pinned:<TrackMetadataName>:<StrandNumber>:<ScorerShortName>:<Source>`
+    (using `ACTIVE_ISM` for activity-weighted motifs or `RAW_SCORES` for raw ISM
+    motifs) directly to `lItems` for the specific target tracks only.
+2.  Set viewport interval `i` to base-pair resolution ($\ge 2\text{ px/bp}$,
     window $\le 380\text{ bp}$).
 3.  Configure `f` with cell line and transcription factors.
 

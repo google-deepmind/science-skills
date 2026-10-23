@@ -28,7 +28,7 @@ jaspar-database                      | https://jaspar.elixir.no/ and https://jas
 literature-search-arxiv              | https://info.arxiv.org/help/api/index.html
 literature-search-biorxiv            | https://api.biorxiv.org/ and https://www.biorxiv.org/content/about-biorxiv
 literature-search-europepmc          | https://europepmc.org/
-literature-search-openalex           | https://developers.openalex.org/
+literature-search-openalex           | https://help.openalex.org/
 ncbi-sequence-fetch                  | https://www.ncbi.nlm.nih.gov/ and https://www.ncbi.nlm.nih.gov/home/about/policies/
 openfda-database                     | https://open.fda.gov/apis/ and https://open.fda.gov/license
 opentargets-database                 | https://platform-docs.opentargets.org/licence

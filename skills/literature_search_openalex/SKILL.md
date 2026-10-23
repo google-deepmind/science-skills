@@ -17,18 +17,20 @@ description: >
     `uv` is installed and on PATH.
 2.  **User Notification**: If .licenses/literature_search_openalex_LICENSE.txt
     does not already exist in the workspace root directory then (1) prominently
-    notify the user to check the terms at https://developers.openalex.org/ and
-    to always check the license of the papers retrieved by the skill for any
+    notify the user to check the terms at https://help.openalex.org/ and to
+    always check the license of the papers retrieved by the skill for any
     restrictions, then (2) create the file recording the notification text and
     timestamp.
 3.  **`.env` file**: Make sure the `.env` file exists in your home directory.
     Create one if it does not exist.
-4.  **`OPENALEX_API_KEY`** (optional but recommended): Enables the OpenAlex
-    Premium API with higher rate limits. The skill works without it (using the
-    free "polite pool"). You can obtain a key at OpenAlex.org → account
-    settings. You **MUST** use the safe credentials protocol in the
-    `credentials` skill to check for and request this key if this skill looks
-    relevant to the user's request.
+4.  **`OPENALEX_API_KEY`** (optional but recommended): The skill works without a
+    key, but keyless requests share a $0.10/day budget per IP address. A free
+    key has its own $1/day budget and higher rate limits, and is required to
+    download full text from content.openalex.org (`download-pdf`). Adding
+    `mailto` (the former "polite pool") no longer raises limits. You can obtain
+    a free key at OpenAlex.org → account settings. Whenever checking for or
+    requesting this key, you **MUST** use the safe credentials protocol in the
+    `credentials` skill, without blocking keyless execution if it is unset.
 
 ## Core Rules
 
@@ -41,18 +43,21 @@ description: >
     handles retries and rate limiting.
 4.  **No fabrication.** Never invent OpenAlex IDs or DOIs. Use `resolve`/`get`
     to look them up. Report empty results accurately.
-5.  **API key.** If a command returns 401/429 or you need high-volume queries,
-    you **MUST** use the safe credentials protocol in the `credentials` skill to
-    check for and request the `OPENALEX_API_KEY` to help the user add it to
-    their `.env` file.
+5.  **API key.** If a command returns 401, returns 429 because of a rate limit
+    or exhausted daily budget, or you need high-volume queries, you **MUST** use
+    the safe credentials protocol in the `credentials` skill to check for and
+    request the `OPENALEX_API_KEY` to help the user add it to their `.env` file.
+    A free key does not fix a 429 `Plan upgrade required` error.
 6.  **Keep output small.** Always use `--select` and `--per-page 5–10` for
     overview queries. Pipe `filter` output to a file (`> results.json`), then
     slim with `jq` before reading into context.
 
 ## Rate Limits
 
--   **With key:** ~10 req/s, $1/day free budget.
--   **Without key:** Very limited, $0.01/day budget.
+-   **Without key:** 10 req/s; $0.10/day budget per IP address, shared by all
+    keyless requests from that IP.
+-   **With free key:** 30 req/s; $1/day budget.
+-   **Annual plan:** 50 req/s.
 
 Operation              | Cost
 ---------------------- | -------
@@ -92,11 +97,17 @@ Entity types (shared across commands): `works`, `authors`, `sources`,
 -   `--sample <N>`: Get a random sample of up to 10,000 results.
 -   `--seed <N>`: Seed for reproducible sampling.
 
-**download-pdf** `<work-id> <output-path>` — Download PDF (requires API key).
-Falls back to alternative `pdf_url` locations if primary fails. Whenever you
-download a PDF, verify it is not empty or corrupted.
+**download-pdf** `<work-id> <output-path>` — Download PDF
+(`content.openalex.org` requires `OPENALEX_API_KEY`; falls back to alternative
+`pdf_url` locations from work metadata if unauthenticated or if the primary
+server fails). Always run `download-pdf` and verify any downloaded PDF is
+non-empty and not corrupted; if `OPENALEX_API_KEY` is missing, also refer to the
+`credentials` skill to help the user add it.
 
-**rate-limit** — Check current rate limit status (requires API key).
+**rate-limit** — Check current rate limit and daily credit status (reports
+shared per-IP limits when keyless, or key-specific limits when
+`OPENALEX_API_KEY` is set; if `OPENALEX_API_KEY` is not set, also refer to the
+`credentials` skill to help the user add it).
 
 ### Search Tips
 
@@ -116,6 +127,10 @@ Consult `references/` for valid filter, sort, and group-by fields per entity:
 -   [Geo & Language](references/geo_and_language.md) —
     [Publishers & Funders](references/publishers_funders.md)
 -   [Type Values](references/type_values.md)
+
+For anything not covered here, or if the API behaves differently from what this
+skill describes, check the official docs index at
+https://help.openalex.org/llms.txt.
 
 ## Common Workflows
 
@@ -148,22 +163,19 @@ uv run scripts/openalex_cli.py filter works \
 
 ## Error Handling
 
-| Code | Meaning             | Action                        |
-| ---- | ------------------- | ----------------------------- |
-| 401  | Unauthorized        | You MUST use safe credentials |
-:      :                     : protocol in credentials skill :
-:      :                     : to help user add API key to   :
-:      :                     : `.env`                        :
-| 403  | Plan upgrade needed | Inform user; see              |
-:      :                     : https\://openalex.org/pricing :
-| 404  | Not found           | Verify ID; try `resolve`      |
-:      :                     : first                         :
-| 429  | Rate limited        | Wait and retry; you MUST use  |
-:      :                     : safe credentials protocol in  :
-:      :                     : credentials skill to help     :
-:      :                     : user add API key to `.env`    :
+The CLI already retries 429s with backoff, except `Plan upgrade required` ones,
+which fail immediately with an explanation. Don't blindly retry either kind; the
+`Server body` in the error output tells them apart.
 
-Known premium-only filters: `from_updated_date`, `to_updated_date`.
+Code | Meaning                                  | Action
+---- | ---------------------------------------- | ------
+401  | Unauthorized                             | You MUST use safe credentials protocol in credentials skill to help user add API key to `.env`
+404  | Not found                                | Verify ID; try `resolve` first
+429  | Body says `Plan upgrade required`        | Paid-plan feature (e.g. a plan-gated filter). Do not retry; a free key won't help. Drop the filter or inform user; see https://openalex.org/pricing
+429  | Body says rate limit or budget exhausted | No key: you MUST use safe credentials protocol in credentials skill to help user add API key to `.env`. With key: wait and retry (rate limit) or tell user the daily budget is spent
+
+Known plan-gated filters: `from_created_date`, `from_updated_date`,
+`to_updated_date`.
 
 Never fabricate results on empty responses — report accurately and suggest
 alternate search terms.

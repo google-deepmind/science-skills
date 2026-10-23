@@ -378,7 +378,8 @@ skill root and contains `alphagenome>=0.6.1` in `dependencies`.
 
 ### Client initialization needs correct address
 
-Always use the production address for API access: `address='dns:///gdmscience.googleapis.com:443'`
+Always use the production address for API access:
+`address='dns:///gdmscience.googleapis.com:443'`
 
 --------------------------------------------------------------------------------
 

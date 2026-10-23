@@ -29,6 +29,7 @@ pharmacology, images, and performing similarity/substructure searches.
 import argparse
 import json
 import sys
+from typing import Any
 import urllib.parse
 
 from polite_http import http_client
@@ -37,10 +38,10 @@ PUBCHEM_BASE_URL = "https://pubchem.ncbi.nlm.nih.gov/rest"
 _CLIENT = http_client.HttpClient(PUBCHEM_BASE_URL, qps=5)
 
 
-def make_request(url):
-  """Makes an HTTP GET request via http_client."""
+def make_request(url, *, method="GET", data=None):
+  """Makes an HTTP request via http_client."""
   try:
-    resp = _CLIENT.fetch(url)
+    resp = _CLIENT.fetch(url, method=method, data=data)
     content_type = resp.headers.get("Content-Type", "")
 
     if "application/json" in content_type:
@@ -72,28 +73,37 @@ def write_output(data, output_file):
     sys.exit(1)
 
 
-def resolve(name=None, inchi=None):
+def resolve(
+    *, name: str | None = None, inchi: str | None = None
+) -> dict[str, Any]:
   """Resolves a chemical name or InChI to CIDs and SMILES."""
   if name:
     encoded_val = urllib.parse.quote(name)
-    input_type = "name"
+    url_cids = f"{PUBCHEM_BASE_URL}/pug/compound/name/{encoded_val}/cids/JSON"
+    url_props = f"{PUBCHEM_BASE_URL}/pug/compound/name/{encoded_val}/property/CanonicalSMILES,IsomericSMILES,InChIKey/JSON"
+    method = "GET"
+    post_data = None
   elif inchi:
-    encoded_val = urllib.parse.quote(inchi)
-    input_type = "inchi"
+    url_cids = f"{PUBCHEM_BASE_URL}/pug/compound/inchi/cids/JSON"
+    url_props = f"{PUBCHEM_BASE_URL}/pug/compound/inchi/property/CanonicalSMILES,IsomericSMILES,InChIKey/JSON"
+    method = "POST"
+    post_data = urllib.parse.urlencode({"inchi": inchi}).encode("utf-8")
   else:
-    return {"error": "Either name or inchi must be provided."}
+    return {
+        "identifiers": None,
+        "properties": None,
+        "error": "Either name or inchi must be provided.",
+    }
 
-  url_cids = (
-      f"{PUBCHEM_BASE_URL}/pug/compound/{input_type}/{encoded_val}/cids/JSON"
-  )
-  url_props = f"{PUBCHEM_BASE_URL}/pug/compound/{input_type}/{encoded_val}/property/CanonicalSMILES,IsomericSMILES,InChIKey/JSON"
-
-  cids_data = make_request(url_cids)
+  cids_data = make_request(url_cids, method=method, data=post_data)
   if isinstance(cids_data, dict) and "error" in cids_data:
-    return cids_data
+    return {
+        "identifiers": cids_data,
+        "properties": None,
+        "error": cids_data["error"],
+    }
 
-  props_data = make_request(url_props)
-
+  props_data = make_request(url_props, method=method, data=post_data)
   return {"identifiers": cids_data, "properties": props_data}
 
 
@@ -128,8 +138,16 @@ def xrefs(cid, xref_type):
   return make_request(url)
 
 
-def query(path):
+def query(path: str) -> Any:
   clean_path = path.lstrip("/")
+  if not clean_path.startswith(("pug/", "pug_view/")):
+    modified_path = f"pug/{clean_path}"
+    print(
+        f"Warning: Prepending 'pug/' to query path '{clean_path}' ->"
+        f" '{modified_path}'.",
+        file=sys.stderr,
+    )
+    clean_path = modified_path
   url = f"{PUBCHEM_BASE_URL}/{clean_path}"
   return make_request(url)
 
