@@ -6,6 +6,8 @@ description: >
   and browsing by date range with category and keyword filters. Keyword
   filtering is local, so date ranges MUST be narrow (1-4 weeks) with a
   category to prevent timeouts.
+metadata:
+  publisher: google
 ---
 
 # bioRxiv and medRxiv Literature Search

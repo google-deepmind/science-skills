@@ -3,6 +3,8 @@ name: human-protein-atlas-database
 description: >
   Use when you want to retrieve semi-quantitative protein expression and
   spatial localisation data from the Human Protein Atlas (HPA).
+metadata:
+  publisher: google
 ---
 
 # Human Protein Atlas (HPA) Database Integration

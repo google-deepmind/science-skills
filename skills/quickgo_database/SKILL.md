@@ -6,6 +6,8 @@ description: >
   cellular components, find genes associated with a specific pathway/GO term, or
   explore the Gene Ontology hierarchy. Do not use for querying drug targets (use
   OpenTargets) or mechanistic signaling pathway diagrams (use KEGG).
+metadata:
+  publisher: google
 ---
 
 # QuickGO Database Skill

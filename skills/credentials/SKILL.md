@@ -3,6 +3,8 @@ name: credentials
 description: >-
   Instructions for handling API keys and credentials safely, verifying their
   presence, and prompting the user to add them if missing using a safe protocol.
+metadata:
+  publisher: google
 ---
 
 # Safe Credentials Protocol

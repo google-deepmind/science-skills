@@ -7,6 +7,8 @@ description: >-
   and specific compounds or genes. Verify medical spelling, match raw citations,
   and cache result sets for bulk processing. Interfaces NCBI E-utilities and PMC
   BioC APIs.
+metadata:
+  publisher: google
 ---
 
 # PubMed API

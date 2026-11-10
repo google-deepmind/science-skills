@@ -4,6 +4,8 @@ description: >
   Query Open Targets Platform for target-disease associations, drug target
   discovery, tractability/safety data, genetics/omics evidence, known drugs,
   for therapeutic target identification.
+metadata:
+  publisher: google
 ---
 
 # Open Targets Database Skill

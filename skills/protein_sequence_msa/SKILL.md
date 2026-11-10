@@ -8,6 +8,8 @@ description: >
   a database (use MMseqs2, BLAST), align non-protein sequences (DNA, RNA),
   perform structural alignment (use Foldseek, PyMOL), or if you only have a
   single sequence.
+metadata:
+  publisher: google
 ---
 
 ## Prerequisites

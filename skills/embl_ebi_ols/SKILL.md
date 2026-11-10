@@ -7,6 +7,8 @@ description: >
   navigate hierarchies (parents, children, ancestors), look up properties and
   individuals, get autocomplete suggestions, or access ontology metadata and
   statistics.
+metadata:
+  publisher: google
 ---
 
 # EMBL-EBI Ontology Lookup Service (OLS)

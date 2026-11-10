@@ -7,6 +7,8 @@ description: >
     matches, or wants to infer protein function based on sequence similarity,
     but not when the user wants to infer protein function based on structural
     similarity.
+metadata:
+  publisher: google
 ---
 
 ## Prerequisites

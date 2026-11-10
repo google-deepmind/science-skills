@@ -10,6 +10,8 @@ description: >-
   genomic variant. Don't use for computing raw AlphaGenome variant predictions
   directly without Atlas URLs (use alphagenome-single-variant-analysis or
   alphagenome-variant-impact-score).
+metadata:
+  publisher: google
 ---
 
 # AlphaGenome Atlas Deep-Linking & URL Configuration

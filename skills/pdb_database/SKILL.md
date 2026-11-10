@@ -6,6 +6,8 @@ description: >
   Supports searching by sequence similarity, structure similarity, chemical
   and other attributes. Also use to get metadata about biomolecular structure
   experiments.
+metadata:
+  publisher: google
 ---
 
 # RCSB Protein Data Bank skill

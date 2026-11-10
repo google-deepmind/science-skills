@@ -1,7 +1,7 @@
 # Science skills
 
 A collection of agent skills for scientific research tasks, spanning genomics,
-structural biology, cheminformatics, literature search, and more.
+structural biology, literature search, and more.
 
 Each skill provides structured instructions, scripts, and resources that extend
 an AI agent's capabilities for specialized scientific tasks.

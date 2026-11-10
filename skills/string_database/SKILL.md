@@ -5,6 +5,8 @@ description: >
   enrichment, and homology. Use when the user asks about interactions between
   specific proteins, interaction evidence, confidence scores, protein
   interaction partners, or pathway enrichments.
+metadata:
+  publisher: google
 ---
 
 # STRING Database Skill

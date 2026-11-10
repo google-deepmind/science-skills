@@ -7,6 +7,8 @@ description: >-
   listing available datasets by species, cell line, or TF name. Don't use to
   query specific intervals, locations, genes, motif models or expression
   data.
+metadata:
+  publisher: google
 ---
 
 # UniBind Database Skill

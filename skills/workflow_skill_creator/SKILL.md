@@ -7,6 +7,8 @@ description: >
   "create a skill from what we just did", "package this workflow" or similar.
   Do not use for creating skills from scratch without an existing workflow
   (use a generic skill-creator for that).
+metadata:
+  publisher: google
 ---
 
 # Workflow-to-Skill Distiller

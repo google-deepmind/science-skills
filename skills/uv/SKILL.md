@@ -4,6 +4,8 @@ description: >-
   Checks whether the uv Python package manager is installed and installs it if
   missing. Ensures uv is on PATH. Use when another skill requires uv as a
   prerequisite.
+metadata:
+  publisher: google
 ---
 
 # uv (Python Package Manager)

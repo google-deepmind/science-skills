@@ -7,6 +7,8 @@ description: >
   finding variants in a genomic region or gene, or querying structural variants.
   Don't use for analyzing individual patient genomes, tracking somatic mutations
   in cancer (use COSMIC), or requesting raw sequencing reads (use ENA).
+metadata:
+  publisher: google
 ---
 
 # gnomAD Database

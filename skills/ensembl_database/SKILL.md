@@ -6,6 +6,8 @@ description: >
   get variant consequence and effect predictions (VEP). Use this skill as a
   primary ID translator, genomic sequence database and variant effect prediction
   tool.
+metadata:
+  publisher: google
 ---
 
 # Ensembl Database: ID Mapping and Genomic Features

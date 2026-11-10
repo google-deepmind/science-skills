@@ -7,6 +7,8 @@ description: >
   open-access PDFs, finding an author's publications, aggregating bibliometric
   data (citation counts, h-index, impact factor), exploring the research
   taxonomies, or performing DOI lookups.
+metadata:
+  publisher: google
 ---
 
 # OpenAlex Skill

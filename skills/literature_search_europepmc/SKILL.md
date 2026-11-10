@@ -4,6 +4,8 @@ description: >
   Search Europe PMC for scientific literature and download open-access full
   texts and PDFs. Retrieve full-text XML/plain text by PMCID, get citation
   lists and bibliography.
+metadata:
+  publisher: google
 ---
 
 # Europe PMC Database

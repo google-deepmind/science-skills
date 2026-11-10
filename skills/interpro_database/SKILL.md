@@ -7,6 +7,8 @@ description: >
   databases (e.g., Pfam, CDD) into one searchable resource. InterPro-N
   significantly expands annotation and sequence coverage with deep learning.
   Includes domain architecture (IDA) search.
+metadata:
+  publisher: google
 ---
 
 # InterPro Database Access

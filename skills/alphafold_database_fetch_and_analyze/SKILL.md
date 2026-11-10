@@ -6,6 +6,8 @@ description: >
   confidence metrics (pLDDT), domain boundary analysis, or disorder
   assessment. Do not use if the user only has a protein name, gene name,
   or amino acid sequence — ask for a UniProt ID first.
+metadata:
+  publisher: google
 ---
 
 # AlphaFold Database: Fetch and Analyze

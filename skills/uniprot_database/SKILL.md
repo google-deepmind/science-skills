@@ -6,6 +6,8 @@ description: >-
   retrieving functional annotations and publications. Don't use for sequence
   alignment, protein folding, or sequence similarity search (use specialized
   skills for those tasks).
+metadata:
+  publisher: google
 ---
 
 # UniProt Database Access

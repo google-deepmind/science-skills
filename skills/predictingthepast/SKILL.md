@@ -7,6 +7,8 @@ description: >
   "where was it written", "when was it written", "embed", or "analyze"
   an ancient text, inscription, or epigraphic document, or when the user
   mentions "Aeneas", or "Ithaca".
+metadata:
+  publisher: google
 ---
 
 # Predicting The Past (Aeneas / Ithaca)

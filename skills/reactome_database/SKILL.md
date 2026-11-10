@@ -7,6 +7,8 @@ description: >
   reaction participants (inputs, outputs), pathway hierarchy (including
   top-level pathways), diagram export, cross-reference mapping, or searching the
   knowledgebase.
+metadata:
+  publisher: google
 ---
 
 # Reactome Analysis & Content Service

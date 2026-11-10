@@ -5,6 +5,8 @@ description: >-
   (AVI) scores. Query variants in chr:pos:ref>alt format, annotate VCF/tabular callsets, perform
   saturation mutagenesis window scans (1-based closed chr:start-end), and extract GENCODE v46 GTF
   gene/exon/junction coordinates all via the AlphaGenome Atlas API.
+metadata:
+  publisher: google
 ---
 
 # AlphaGenome Variant Impact (AVI) Analysis
